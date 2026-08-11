@@ -4,3 +4,6 @@ scikit-learn==1.6.0
 numpy==2.2.1
 joblib==1.4.2
 pydantic==2.10.4
+
+# Test-only dependencies (pytest, httpx) are installed separately in CI —
+# see .github/workflows/ci.yml — and are not required to run the service.
