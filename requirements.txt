@@ -1,9 +1,17 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
-scikit-learn==1.6.0
-numpy==2.2.1
-joblib==1.4.2
 pydantic==2.10.4
+python-multipart==0.0.33
+pillow==13.0.0
+ultralytics==8.4.202
+torch==2.15.0
+torchvision==0.29.1
 
-# Test-only dependencies (pytest, httpx) are installed separately in CI —
+# On Linux, install the CPU-only PyTorch build first to avoid ~2 GB of CUDA
+# libraries (the Dockerfile and CI do this):
+#   pip install torch==2.15.0 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu
+#
+# Test and lint tools (pytest, httpx, ruff) are installed separately in CI —
 # see .github/workflows/ci.yml — and are not required to run the service.
+#
+# Training only: huggingface_hub (used by scripts/download_data.py).

@@ -1,115 +1,209 @@
-# ML Inference API
+# Steel Defect Detection API
 
-A small machine learning service that shows the full path from a trained model to a
-running, tested, containerised API. Built to demonstrate deployment practice, not
-model complexity.
+A computer-vision service that finds surface defects on hot-rolled steel. A YOLO26n
+model is fine-tuned on the NEU-DET industrial dataset and served behind a tested,
+containerised REST API, with CI on every push.
 
 ![CI](https://github.com/ParnaSaeidpour/ml-inference-api/actions/workflows/ci.yml/badge.svg)
 
-## What it does
+![Model predictions on held-out test images](docs/predictions.jpg)
 
-An image classifier is trained on the scikit-learn digits dataset (8x8 grayscale
-images, 10 classes) and served over HTTP with FastAPI. The service is packaged in a
-Docker container, and every push to `main` automatically runs the test suite and
-builds the image through GitHub Actions.
+*Predictions on six images from the held-out test split, one per defect type.*
 
-Test accuracy: **0.96** (Random Forest, 100 trees, 20% held-out test set).
+## The problem
 
-## Why this project
+In steel production, surface defects such as scratches, inclusions and scale are
+still often found by people watching a line. This project detects and localises six
+defect types automatically, returning each defect's type, confidence and bounding
+box so a downstream system can flag, sort or log the part.
 
-Training a model is only part of the work. This repository covers the part that is
-usually missing from student projects:
+| Class | What it looks like |
+|---|---|
+| `crazing` | Network of fine surface cracks |
+| `inclusion` | Foreign material embedded in the surface |
+| `patches` | Irregular discoloured areas |
+| `pitted_surface` | Small pits and holes |
+| `rolled-in_scale` | Oxide scale pressed into the surface during rolling |
+| `scratches` | Linear marks |
 
-- serving a model behind a documented REST API
-- loading the model once at startup rather than per request
-- input validation with clear error responses
-- automated tests, including a guard against silent accuracy regressions
-- a reproducible container that runs the same way anywhere
-- continuous integration that blocks a broken build
+## Results
 
-## Architecture
+Measured on the **held-out test split** (180 images), which was not used for training
+or for picking the best epoch.
+
+| Metric | Score |
+|---|---|
+| **mAP50** | **0.758** |
+| mAP50-95 | 0.456 |
+| Precision | 0.722 |
+| Recall | 0.722 |
+| Model size | 5.5 MB |
+| Inference | ~50 ms per request on an Apple M3 laptop, including image decoding |
+
+| Class | mAP50 | |
+|---|---|---|
+| scratches | 0.973 | Very reliable |
+| patches | 0.904 | |
+| inclusion | 0.848 | |
+| pitted_surface | 0.812 | |
+| rolled-in_scale | 0.657 | Low contrast, often confused with background |
+| crazing | 0.354 | Weakest: fine crack networks with no clear boundary |
+
+**Crazing is the weak spot,** and that's a known problem with NEU-DET. Its "defects"
+are diffuse textures rather than objects with edges, and the annotated boxes vary a
+lot between images. Larger models, higher input resolution or texture-focused
+augmentation would be the next things to try.
+
+Full numbers are in [`models/metrics.json`](models/metrics.json), and the API serves
+them at `GET /model`.
+
+## How it works
 
 ```
-app/model.py   training, loading and inference logic
-app/main.py    FastAPI application and endpoints
-tests/         pytest suite, run automatically on every push
-Dockerfile     container definition
-.github/       GitHub Actions CI pipeline
+scripts/download_data.py   download NEU-DET (YOLO format) from Hugging Face
+scripts/train.py           fine-tune YOLO26n, evaluate on the test split
+scripts/make_demo.py       render docs/predictions.jpg
+app/model.py               load weights, validate images, run inference
+app/main.py                FastAPI application and endpoints
+models/                    trained weights + test metrics (served by the API)
+tests/                     pytest suite, run on every push
+Dockerfile                 CPU-only production container
+.github/workflows/ci.yml   lint, test, build and smoke-test the image
 ```
 
-The API layer knows nothing about the model beyond `predict()` and
-`predict_proba()`, so a different model can be swapped in without touching
-`main.py`.
+**Training.** The model starts from COCO-pretrained YOLO26n weights and is fine-tuned
+on 1,437 training images. The best epoch is chosen on the 180-image validation split,
+and the final numbers come from the separate 180-image test split, so the reported
+scores are not tuned on the data they're measured on.
+
+**Serving.** `app/model.py` is the only module that knows about YOLO. The API calls
+`load()`, `detect()` and `annotate()`, so a different detector can be swapped in
+without touching `main.py`.
 
 ## Endpoints
 
-| Method | Path       | Purpose                          |
-|--------|------------|----------------------------------|
-| GET    | `/health`  | Liveness check for orchestrators |
-| POST   | `/predict` | Classify one image               |
-| GET    | `/docs`    | Interactive OpenAPI docs         |
+| Method | Path             | Purpose                                     |
+|--------|------------------|---------------------------------------------|
+| GET    | `/health`        | Liveness check for Docker and orchestrators |
+| GET    | `/model`         | Served model, classes and test metrics      |
+| POST   | `/predict`       | Detect defects, return JSON                 |
+| POST   | `/predict/image` | Detect defects, return the image with boxes |
+| GET    | `/docs`          | Interactive OpenAPI docs                    |
+
+Both prediction endpoints accept an optional `conf` query parameter (0.01 to 1.0,
+default 0.25) that sets the minimum confidence.
 
 ### Example
 
 ```bash
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{"pixels": [0,0,5,13,9,1,0,0, 0,0,13,15,10,15,5,0, 0,3,15,2,0,11,8,0,
-                  0,4,12,0,0,8,8,0, 0,5,8,0,0,9,8,0, 0,4,11,0,1,12,7,0,
-                  0,2,14,5,10,12,0,0, 0,0,6,13,10,0,0,0]}'
+curl -F "file=@tests/fixtures/scratches_122.jpg" http://localhost:8000/predict
 ```
 
 ```json
-{ "prediction": 0, "confidence": 0.99 }
+{
+  "image_width": 200,
+  "image_height": 200,
+  "defect_count": 1,
+  "detections": [
+    {
+      "label": "scratches",
+      "confidence": 0.8294,
+      "box": { "x1": 14.8, "y1": 0.7, "x2": 66.2, "y2": 196.0 }
+    }
+  ]
+}
 ```
-
-## Running it
-
-**Locally**
 
 ```bash
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+# Get the annotated image instead
+curl -F "file=@tests/fixtures/scratches_122.jpg" \
+     http://localhost:8000/predict/image -o result.jpg
 ```
+
+## Production details
+
+- **The model loads once at startup**, with a warm-up pass so the first request isn't slow.
+- **Input validation.** Files must be real images under 10 MB and at most 4096 px on a
+  side. Anything else gets a clear `422` error.
+- **No surprise installs.** Ultralytics normally pip-installs missing extras at runtime,
+  and a non-image upload can trigger this. The service disables that and decodes
+  uploads with Pillow directly, and a test covers it.
+- **Thread safety.** Inference runs in FastAPI's thread pool, so it doesn't block the
+  event loop. A lock serialises access to the model, which is not thread-safe.
+- **Observability.** Every request is logged with its status and latency, and the
+  latency is also returned in an `X-Process-Time-Ms` header.
+- **Small container.** It uses CPU-only PyTorch (about 2 GB smaller than the default
+  build), runs as a non-root user, has a `HEALTHCHECK`, and makes no network calls at
+  runtime.
+- **Release gate.** CI fails if the committed model's test mAP50 drops below the
+  threshold in `tests/test_api.py`.
+
+## Running it
 
 **With Docker**
 
 ```bash
-docker build -t ml-inference-api .
-docker run -p 8000:8000 ml-inference-api
+docker build -t defect-api .
+docker run -p 8000:8000 defect-api
 ```
 
 Then open http://localhost:8000/docs
 
-**Tests**
+**Locally**
 
 ```bash
-pytest -v
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
 ```
+
+**Tests and lint**
+
+```bash
+pip install pytest httpx ruff
+ruff check . && pytest -v
+```
+
+**Retraining**
+
+```bash
+pip install huggingface_hub
+python scripts/download_data.py      # ~50 MB
+python scripts/train.py              # --device mps (Apple Silicon), cpu, or 0 (CUDA)
+python -m scripts.make_demo
+```
+
+Training the 60 epochs took about 2.2 hours on an Apple M3 laptop (MPS). Results
+can vary slightly between machines. The committed weights are the ones
+`models/metrics.json` describes.
 
 ## CI pipeline
 
-Defined in `.github/workflows/ci.yml`. On every push and pull request to `main`:
+On every push and pull request to `main`:
 
-1. **test** — installs dependencies and runs the pytest suite
-2. **docker** — builds the image and smoke-tests the running container, and only
-   runs if the tests passed
+1. **Lint and test.** `ruff` lint and format checks, then the pytest suite: endpoint
+   behaviour, per-class detection on held-out images, input validation and the
+   accuracy gate.
+2. **Docker.** Builds the image, waits for it to report healthy, and sends a real image
+   to `/predict`. This only runs if step 1 passed.
 
-A failing test stops the build, so a broken model or endpoint never reaches an
-image.
+## Data and licenses
 
-## Notes on the container
+- **Dataset:** NEU Surface Defect Database (NEU-DET), from Northeastern University
+  (K. Song, Y. Yan). This project uses the cleaned copy
+  [KeenForgeAI/NEU-DET-corrected](https://huggingface.co/datasets/KeenForgeAI/NEU-DET-corrected),
+  which removes duplicate images and boxes and adds a fixed, class-stratified
+  80/10/10 split. The original authors have not stated a license, so the dataset is
+  used here for research and demonstration only. The six images in `tests/fixtures/`
+  come from its test split.
 
-- `python:3.11-slim` base image keeps the image small
-- dependencies are installed before the code is copied, so Docker caches that layer
-- the model is trained at build time, so the container starts immediately
-- the process runs as a non-root user
-- a `HEALTHCHECK` lets Docker and deployment platforms detect an unhealthy container
+  > He, Y., Song, K., Meng, Q., Yan, Y. (2020). *An End-to-end Steel Surface Defect
+  > Detection Approach via Fusing Multiple Hierarchical Features.* IEEE Transactions on
+  > Instrumentation and Measurement, 69(4), 1493–1504.
 
-## Adapting this to another model
-
-Replace the training logic in `app/model.py`, update `N_FEATURES`, and adjust the
-request schema in `app/main.py`. Everything else stays the same.
+- **Model:** [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) is licensed
+  under AGPL-3.0. Commercial closed-source use would need an Ultralytics Enterprise
+  license.
 
 ## Author
 

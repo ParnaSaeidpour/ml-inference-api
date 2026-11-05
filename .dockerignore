@@ -3,6 +3,13 @@ __pycache__/
 .pytest_cache/
 .git/
 .github/
+.claude/
+.venv/
 tests/
-*.joblib
+data/
+runs/
+scripts/
+docs/
+models/base/
+*.log
 README.md

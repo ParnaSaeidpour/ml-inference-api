@@ -1,5 +1,13 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-app/model.joblib
+.ruff_cache/
 .venv/
+.claude/
+
+# Training artefacts: dataset is downloaded, runs are regenerated
+data/
+runs/
+*.log
+models/base/
+/yolo*.pt
