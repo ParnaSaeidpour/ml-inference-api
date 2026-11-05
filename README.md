@@ -5,6 +5,7 @@ model is fine-tuned on the NEU-DET industrial dataset and served behind a tested
 containerised REST API, with CI on every push.
 
 ![CI](https://github.com/ParnaSaeidpour/ml-inference-api/actions/workflows/ci.yml/badge.svg)
+![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)
 
 ![Model predictions on held-out test images](docs/predictions.jpg)
 
@@ -204,6 +205,10 @@ On every push and pull request to `main`:
 - **Model:** [Ultralytics YOLO](https://github.com/ultralytics/ultralytics) is licensed
   under AGPL-3.0. Commercial closed-source use would need an Ultralytics Enterprise
   license.
+
+- **This project:** licensed under [AGPL-3.0](LICENSE), matching Ultralytics. You can
+  use, change and share it, including as a network service, as long as you publish
+  your changes under the same license.
 
 ## Author
 
