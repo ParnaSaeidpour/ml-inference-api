@@ -2,7 +2,7 @@
 
 A computer-vision service that finds surface defects on hot-rolled steel. A YOLO26n
 model is fine-tuned on the NEU-DET industrial dataset and served behind a tested,
-containerised REST API, with CI on every push.
+containerised REST API, with CI on every push and a Docker image published on every release.
 
 ![CI](https://github.com/ParnaSaeidpour/ml-inference-api/actions/workflows/ci.yml/badge.svg)
 ![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)
@@ -70,6 +70,7 @@ models/                    trained weights + test metrics (served by the API)
 tests/                     pytest suite, run on every push
 Dockerfile                 CPU-only production container
 .github/workflows/ci.yml   lint, test, build and smoke-test the image
+.github/workflows/release.yml   on a GitHub release: run CI, then publish the image
 ```
 
 **Training.** The model starts from COCO-pretrained YOLO26n weights and is fine-tuned
@@ -141,7 +142,13 @@ curl -F "file=@tests/fixtures/scratches_122.jpg" \
 
 ## Running it
 
-**With Docker**
+**With Docker (published image)**
+
+```bash
+docker run -p 8000:8000 ghcr.io/parnasaeidpour/ml-inference-api:latest
+```
+
+**With Docker (build it yourself)**
 
 ```bash
 docker build -t defect-api .
@@ -178,15 +185,22 @@ Training the 60 epochs took about 2.2 hours on an Apple M3 laptop (MPS). Results
 can vary slightly between machines. The committed weights are the ones
 `models/metrics.json` describes.
 
-## CI pipeline
+## CI/CD pipeline
 
-On every push and pull request to `main`:
+On every push and pull request to `main` (CI):
 
 1. **Lint and test.** `ruff` lint and format checks, then the pytest suite: endpoint
    behaviour, per-class detection on held-out images, input validation and the
    accuracy gate.
 2. **Docker.** Builds the image, waits for it to report healthy, and sends a real image
    to `/predict`. This only runs if step 1 passed.
+
+When a GitHub release is published, for example `v1.0.0` (CD):
+
+3. **Release.** Runs steps 1 and 2 again, and only if they pass, builds the image and
+   publishes it to GitHub Container Registry as
+   `ghcr.io/parnasaeidpour/ml-inference-api` with the tags `1.0.0`, `1.0` and `latest`.
+   Only the image is published; nothing is deployed or hosted.
 
 ## Data and licenses
 

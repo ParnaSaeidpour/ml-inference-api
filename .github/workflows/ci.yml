@@ -1,11 +1,14 @@
 name: CI
 
-# Run on every push and every pull request to main
+# Run on every push and every pull request to main.
+# release.yml also calls this workflow, so a release is only published
+# after the same tests and Docker smoke test have passed.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_call:
 
 jobs:
   test:
