@@ -212,6 +212,6 @@ On every push and pull request to `main`:
 
 ## Author
 
-Parna Saeidpour — AI Engineer, Jönköping, Sweden
+Parna Saeidpour, AI Engineer, Jönköping, Sweden
 [LinkedIn](https://www.linkedin.com/in/parna-saeidpour-185a4652/) ·
 [GitHub](https://github.com/ParnaSaeidpour)
